@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#172554">
+<title>配達収支台帳</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;color:#172033;background:#f3f6fb}
+*{box-sizing:border-box}body{margin:0}header{background:#1e3a8a;color:#fff;padding:14px max(14px,env(safe-area-inset-left));position:sticky;top:0;z-index:5;box-shadow:0 2px 10px #0002}
+h1{font-size:19px;margin:0 0 12px}.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bar select{max-width:120px}
+nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px;padding:2px 0 0}nav button{white-space:nowrap;min-width:0;width:100%;padding:9px 3px;font-size:clamp(11px,3.2vw,14px);background:#fff;color:#1e3a8a;border:1px solid #bfdbfe}header .bar label{color:#eff6ff!important}header .status{color:#dbeafe}header select{color:#172033;background:#fff;min-width:105px}header button{color:#172033}header button.primary{color:#fff}
+main{max-width:1000px;margin:16px auto;padding:0 12px 40px}.card{background:white;border-radius:15px;padding:16px;margin:0 0 14px;box-shadow:0 2px 8px #1725540d}
+h2{font-size:18px;margin:0 0 12px}.month-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.month-title-row h2{margin:0;flex:1}.month-title-row button{flex:0 0 auto;margin-bottom:4px}h3{font-size:15px;margin:0 0 8px}
+button,input,select,textarea{font:inherit;border-radius:9px;border:1px solid #cbd5e1;padding:10px;background:white;color:inherit}
+button{cursor:pointer}button.primary{background:#2563eb;color:white;border-color:#2563eb}button.dark{background:#1e293b;color:white;border-color:#1e293b}button.danger{color:#b91c1c;border-color:#fecaca;background:#fff7f7}
+button.small{padding:7px 9px;font-size:13px}.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.metric{background:#f1f5f9;padding:12px;border-radius:11px}.metric span{display:block;color:#64748b;font-size:12px}.metric strong{display:block;font-size:20px;margin-top:4px;overflow-wrap:anywhere}
+.month-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.month{border:1px solid #e2e8f0;border-radius:11px;padding:11px}.month b{display:block;margin:5px 0}.muted{color:#64748b;font-size:13px;line-height:1.5}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.row .fit{flex:0 0 auto}
+label{display:block;font-size:13px;color:#475569;margin:0 0 5px}.field{min-width:0}.field input,.field select,.field textarea{width:100%}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.formgrid .wide{grid-column:1/-1}
+.partner-list{display:flex;flex-wrap:wrap;gap:8px}.partner-chip{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.tx{border:1px solid #e2e8f0;border-radius:11px;padding:11px;margin:9px 0}.tx-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.tx strong{font-size:16px}.tx input{width:100%}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px 7px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
+.tablewrap{overflow-x:auto}.notice{background:#fffbeb;border:1px solid #fde68a;color:#854d0e;padding:11px;border-radius:10px;font-size:12px;line-height:1.55}
+.status{font-size:12px;color:#bfdbfe;margin-left:auto}.hidden{display:none!important}
+@media(min-width:700px){.metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.formgrid{grid-template-columns:repeat(3,minmax(0,1fr))}.month-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:390px){.month-grid{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:17px}.metric strong{font-size:18px}}
+@media(max-width:520px){header{padding:12px 12px}header h1{color:#fff}nav button{font-size:12px;padding:9px 2px}.bar{gap:7px}}\n</style>
+</head>
+<body>
+<header>
+ <h1>🚚 配達 収支台帳</h1>
+ <div class="bar">
+  <label style="color:#dbeafe;margin:0">表示年</label><select id="yearSelect" aria-label="表示年"></select>
+  <button class="small primary" id="addYear">＋ 年追加</button>
+  <span class="status" id="status">保存準備完了</span>
+ </div>
+ <nav>
+  <button class="small" data-view="stats">統計</button>
+  <button class="small" data-view="sales">売上</button>
+  <button class="small" data-view="partners">設定</button>
+  <button class="small" data-view="backup">バックアップ</button>
+ </nav>
+</header>
+<main id="app"></main>
+<script>
+'use strict';
+const KEY='deliveryLedger_v2';
+const NEWKEY='deliveryLedger_family_v3';
+const $=id=>document.getElementById(id);
+const yen=v=>Math.round(Number(v)||0).toLocaleString('ja-JP')+'円';
+const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let db,year=new Date().getFullYear(),month=new Date().getMonth()+1,view='stats',saveTimer;
+function blank(){return {version:3,years:[year],partners:[],entries:[],expenses:{},legacyMigrated:false}}
+function load(){
+ try{const n=JSON.parse(localStorage.getItem(NEWKEY));if(n&&n.version===3)return n}catch(e){}
+ let d=blank();
+ try{
+  const old=JSON.parse(localStorage.getItem(KEY));
+  if(old&&Array.isArray(old.years)){
+   d.years=[...new Set(old.years.map(Number))].sort((a,b)=>a-b);
+   for(const y of d.years)for(let m=1;m<=12;m++){
+    const days=old[y]?.[m]?.days||{};
+    for(const [day,x] of Object.entries(days)){
+     const date=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+     const legacySales=num(x.sales);
+     if(legacySales>0){
+      const p='legacy-partner';
+      if(!d.partners.some(z=>z.id===p))d.partners.push({id:p,name:'旧帳簿売上（移行分）',active:false,sort:999,defaultAmount:0});
+      d.entries.push({id:cryptoId(),date,partnerId:p,partnerName:'旧帳簿売上（移行分）',amount:legacySales,memo:'旧帳簿から移行'});
+     }
+     const k=date;d.expenses[k]={gasoline:num(x.gasoline),parking:num(x.parking),other:num(x.other),hours:num(x.hours),note:String(x.note||'')};
+    }
+   }
+   d.legacyMigrated=true;
+  }
+ }catch(e){}
+ return d;
+}
+function cryptoId(){return 'id-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9)}
+function save(){try{localStorage.setItem(NEWKEY,JSON.stringify(db));$('status').textContent='保存済み';return true}catch(e){$('status').textContent='保存失敗';return false}}
+function queueSave(){ $('status').textContent='保存中…';clearTimeout(saveTimer);saveTimer=setTimeout(save,180)}
+function allYears(){return [...new Set([...(db.years||[]),...db.entries.map(e=>+e.date.slice(0,4)),...Object.keys(db.expenses).map(k=>+k.slice(0,4))])].sort((a,b)=>a-b)}
+function syncYears(){db.years=allYears();if(!db.years.length)db.years=[year];$('yearSelect').innerHTML=db.years.map(y=>`<option value="${y}">${y}年</option>`).join('');$('yearSelect').value=year}
+function addYear(){const y=Math.max(...allYears(),new Date().getFullYear())+1;db.years.push(y);year=y;syncYears();queueSave();render('stats')}
+function dateKey(y,m,d){return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
+function entriesFor(y,m){return db.entries.filter(e=>+e.date.slice(0,4)===y&&(m==null||+e.date.slice(5,7)===m))}
+function expenseFor(y,m){let a={gasoline:0,parking:0,other:0,hours:0};for(const [k,x] of Object.entries(db.expenses)){if(+k.slice(0,4)===y&&(m==null||+k.slice(5,7)===m))for(const f in a)a[f]+=num(x[f])}return a}
+function stats(y,m){const sales=entriesFor(y,m).reduce((s,e)=>s+num(e.amount),0),x=expenseFor(y,m),expense=x.gasoline+x.parking+x.other,profit=sales-expense;return {sales,...x,expense,profit,wage:x.hours?profit/x.hours:0}}
+function monthName(m){return `${m}月`}
+function renderStats(){
+ const s=stats(year,null);
+ $('app').innerHTML=`<section class="card"><h2>${year}年 年間収支</h2><div class="metrics">
+ ${metric('年間売上',s.sales)}${metric('年間経費',s.expense)}${metric('年間手取り',s.profit)}${metric('実質時給',s.hours?yen(s.wage):'—')}</div>
+ <p class="muted">売上は日別の案件入力合計です。各月を開くと日別の収支を確認・入力できます。</p></section>
+ <section class="card"><details><summary style="font-weight:700;cursor:pointer;padding:4px 0">${year}年の集計（業者別売上・経費内訳）</summary>
+ <div style="margin-top:12px"><h3>業者別売上</h3>${partnerTable(year,null)}
+ <h3 style="margin-top:18px">経費・稼働時間の年間集計</h3>
+ <div class="metrics">${metric('ガソリン代',s.gasoline)}${metric('駐車場代',s.parking)}${metric('その他経費',s.other)}${metric('稼働時間',s.hours.toFixed(1)+'時間')}</div>
+ </div></details></section>
+ <section class="card"><details><summary style="font-weight:700;cursor:pointer;padding:4px 0">月ごとの業者別売上</summary>
+ <div style="margin-top:12px"><div class="field"><label>対象月</label><select id="partnerMonth">${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===month?'selected':''}>${i+1}月</option>`).join('')}</select></div>
+ <div id="partnerMonthResult" style="margin-top:12px">${partnerMonthSummary(month)}</div></div></details></section>
+ <section class="card"><h2>月別収支</h2><div class="month-grid">${Array.from({length:12},(_,i)=>{let m=i+1,x=stats(year,m);return `<div class="month"><b>${monthName(m)}</b><div class="muted">売上 ${yen(x.sales)}</div><div class="muted">経費 ${yen(x.expense)}</div><div class="muted">手取り ${yen(x.profit)}</div><button class="small primary" onclick="openMonth(${m})">詳細・入力</button></div>`}).join('')}</div></section>`;
+ $('partnerMonth').addEventListener('change',e=>{$('partnerMonthResult').innerHTML=partnerMonthSummary(+e.target.value)});
+}
+function partnerMonthSummary(m){return `<h3>${year}年${m}月</h3>${partnerTable(year,m)}`}
+function metric(label,val){return `<div class="metric"><span>${label}</span><strong>${typeof val==='number'?yen(val):val}</strong></div>`}
+function partnerTable(y,m){let es=entriesFor(y,m),map=new Map();es.forEach(e=>map.set(e.partnerName,(map.get(e.partnerName)||0)+num(e.amount)));let total=es.reduce((a,e)=>a+num(e.amount),0);let rows=[...map].sort((a,b)=>b[1]-a[1]).map(([name,v])=>`<tr><td>${esc(name)}</td><td>${yen(v)}</td><td>${total?Math.round(v/total*100)+'%':'—'}</td></tr>`).join('');return `<div class="tablewrap"><table><thead><tr><th>売上先</th><th>売上</th><th>構成比</th></tr></thead><tbody>${rows||'<tr><td colspan="3">売上データがありません</td></tr>'}</tbody><tfoot><tr><th>合計</th><th>${yen(total)}</th><th>${total?'100%':'—'}</th></tr></tfoot></table></div>`}
+function openMonth(m){month=m;render('month')}
+let salesDate = null;
+function openSalesForDate(date){salesDate=date;year=+date.slice(0,4);month=+date.slice(5,7);render('sales')}
+function renderSales(){
+ const defaultDate=salesDate||dateKey(year,month,Math.min(new Date().getDate(),new Date(year,month,0).getDate()));
+ salesDate=defaultDate;
+ const es=db.entries.filter(e=>e.date===salesDate);
+ const opts=db.partners.filter(p=>p.active!==false).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}${p.defaultAmount?`（標準 ${yen(p.defaultAmount)}）`:''}</option>`).join('');
+ $('app').innerHTML=`<section class="card"><div class="row"><h2>案件別売上入力</h2><button class="small fit" onclick="backToDaily()">日別収支へ戻る</button></div>
+ <div class="field"><label>売上日</label><input id="entryDate" type="date" value="${defaultDate}" onchange="salesDate=this.value;render('sales')"></div>
+ <div class="field" style="margin-top:12px"><label>プリセット業者を選択</label><select id="entryPartner"><option value="">業者を選択（任意）</option>${opts}</select></div>
+ <div class="field" style="margin-top:12px"><label>または今回だけ使う業者名（プリセットには登録されません）</label><input id="oneOffPartner" placeholder="業者名を直接入力"></div>
+ <div class="field" style="margin-top:12px"><label>この案件の売上金額（円）</label><input id="entryAmount" type="number" min="0" inputmode="numeric" placeholder="例：15000"></div>
+ <div class="field" style="margin-top:12px"><label>案件メモ（任意）</label><input id="entryMemo" placeholder="案件内容など"></div>
+ <button class="primary" style="width:100%;margin-top:14px" onclick="saveSingleEntry()">＋ この1案件を登録</button>
+ <p class="muted">登録後、続けて次の案件を入力できます。同じ業者の案件も1件ずつ登録してください。</p></section>
+ <section class="card"><h2>${esc(salesDate)} の登録済み案件</h2><div id="entryList">${entryCards(es)}</div><div class="metrics" style="margin-top:12px">${metric('当日の売上合計',es.reduce((a,e)=>a+num(e.amount),0))}</div></section>`;
+ $('entryPartner').addEventListener('change',e=>{const p=db.partners.find(x=>x.id===e.target.value);if(p&&p.defaultAmount)$('entryAmount').value=p.defaultAmount});
+}
+function saveSingleEntry(){
+ const date=$('entryDate').value,selected=$('entryPartner').value,manual=$('oneOffPartner').value.trim(),p=db.partners.find(x=>x.id===selected);
+ const partnerName=manual||p?.name||'';
+ const amount=$('entryAmount').value;
+ if(!date){alert('売上日を選択してください');return}
+ if(!partnerName){alert('プリセット業者を選ぶか、今回の業者名を入力してください');return}
+ if(amount===''||!Number.isFinite(Number(amount))||Number(amount)<0){alert('売上金額を正しく入力してください');return}
+ db.entries.push({id:cryptoId(),date,partnerId:manual?'':(p?.id||''),partnerName,amount:num(amount),memo:$('entryMemo').value.trim()});
+ salesDate=date;queueSave();render('sales');
+}
+function entryCards(es){if(!es.length)return '<p class="muted">この月の案件はまだありません。</p>';return es.map(e=>`<div class="tx"><div class="tx-head"><div><strong>${esc(e.partnerName)}</strong><div class="muted">${esc(e.date)}</div></div><strong>${yen(e.amount)}</strong></div>${e.memo?`<p class="muted">${esc(e.memo)}</p>`:''}<div class="row" style="margin-top:8px"><button class="small" onclick="editEntry('${e.id}')">編集</button><button class="small danger" onclick="deleteEntry('${e.id}')">削除</button></div></div>`).join('')}
+function addEntry(id){const p=db.partners.find(x=>x.id===id);if(!p)return;const date=$('entryDate').value;if(!date){alert('売上日を選択してください');return}db.entries.push({id:cryptoId(),date,partnerId:p.id,partnerName:p.name,amount:num(p.defaultAmount),memo:''});queueSave();render('sales')}
+function editEntry(id){const e=db.entries.find(x=>x.id===id);if(!e)return;const amount=prompt('売上金額（円）',String(e.amount));if(amount===null)return;if(!Number.isFinite(Number(amount))||Number(amount)<0){alert('金額を正しく入力してください');return}const memo=prompt('案件メモ（任意）',e.memo||'');if(memo===null)return;e.amount=num(amount);e.memo=memo;queueSave();render('sales')}
+function deleteEntry(id){if(!confirm('この案件を削除しますか？'))return;db.entries=db.entries.filter(x=>x.id!==id);queueSave();render('sales')}
+function renderPartners(){
+ $('app').innerHTML=`<section class="card"><h2>売上先プリセット設定</h2><p class="muted">プリセットは年度に依存せず家族帳簿全体で共通です。翌年も同じ業者をそのまま利用できます。</p>
+ <div class="formgrid"><div class="field"><label>業者名</label><input id="newPartnerName" placeholder="例：A社"></div><div class="field"><label>標準売上金額（任意）</label><input id="newPartnerAmount" type="number" min="0" inputmode="numeric" placeholder="例：15000"></div><div class="field"><label>表示順（小さいほど上）</label><input id="newPartnerSort" type="number" value="${db.partners.length+1}"></div></div><button class="primary" style="margin-top:10px" onclick="addPartner()">＋ 業者を追加</button></section>
+ <section class="card"><h2>登録済み業者</h2>${db.partners.length?db.partners.sort((a,b)=>(a.sort||0)-(b.sort||0)).map(p=>`<div class="tx"><div class="tx-head"><strong>${esc(p.name)}</strong><span class="muted">${p.active===false?'使用停止':'使用中'}</span></div><p class="muted">標準金額：${yen(p.defaultAmount||0)} ／ 表示順：${p.sort||0}</p><div class="row"><button class="small" onclick="editPartner('${p.id}')">名前・金額変更</button><button class="small" onclick="togglePartner('${p.id}')">${p.active===false?'使用再開':'使用停止'}</button><button class="small danger" onclick="removePartner('${p.id}')">削除</button></div></div>`).join(''):'<p class="muted">業者はまだ登録されていません。</p>'}</section>`;
+}
+function addPartner(){const name=$('newPartnerName').value.trim();if(!name){alert('業者名を入力してください');return}if(db.partners.some(p=>p.name.toLowerCase()===name.toLowerCase())){alert('同じ名前の業者が登録されています');return}db.partners.push({id:cryptoId(),name,defaultAmount:num($('newPartnerAmount').value),sort:num($('newPartnerSort').value),active:true});queueSave();render('partners')}
+function editPartner(id){const p=db.partners.find(x=>x.id===id);if(!p)return;const name=prompt('業者名',p.name);if(name===null)return;if(!name.trim())return alert('業者名を入力してください');const amount=prompt('標準売上金額',String(p.defaultAmount||0));if(amount===null)return;p.name=name.trim();p.defaultAmount=Math.max(0,num(amount));queueSave();render('partners')}
+function togglePartner(id){const p=db.partners.find(x=>x.id===id);if(!p)return;p.active=p.active===false;queueSave();render('partners')}
+function removePartner(id){const p=db.partners.find(x=>x.id===id);if(!p)return;if(!confirm(`${p.name}をプリセットから削除します。過去の案件記録は残ります。よろしいですか？`))return;db.partners=db.partners.filter(x=>x.id!==id);queueSave();render('partners')}
+function renderMonthDetail(){
+ const x=stats(year,month);
+ $('app').innerHTML=`<section class="card"><div class="month-title-row"><h2>${year}年${month}月の収支</h2><button class="small" onclick="render('stats')">統計へ戻る</button></div><div class="metrics">${metric('売上',x.sales)}${metric('経費',x.expense)}${metric('手取り',x.profit)}${metric('実質時給',x.hours?yen(x.wage):'—')}</div></section>
+ <section class="card"><h2>日別収支入力</h2><p class="muted">売上欄を押して案件を1件ずつ登録します。ガソリン代などは同じ日別カード内で入力できます。</p><div id="expenseDays"></div></section>`;
+ const days=new Date(year,month,0).getDate();
+ $('expenseDays').innerHTML=Array.from({length:days},(_,i)=>{
+  let d=i+1,k=dateKey(year,month,d),v=db.expenses[k]||{},daySales=entriesFor(year,month).filter(e=>e.date===k).reduce((a,e)=>a+num(e.amount),0);
+  return `<div class="tx" id="day-card-${k}"><div class="tx-head"><strong>${month}/${d}</strong><strong>${yen(daySales)}</strong></div>
+  <button class="primary" style="width:100%;margin:9px 0" onclick="openSalesForDate('${k}')">売上 ${yen(daySales)}　｜　案件別入力・確認</button>
+  <div class="formgrid"><div class="field"><label>ガソリン代</label><input type="number" min="0" inputmode="numeric" value="${v.gasoline||''}" onchange="setExpense('${k}','gasoline',this.value)"></div>
+  <div class="field"><label>駐車場代</label><input type="number" min="0" inputmode="numeric" value="${v.parking||''}" onchange="setExpense('${k}','parking',this.value)"></div>
+  <div class="field"><label>その他経費</label><input type="number" min="0" inputmode="numeric" value="${v.other||''}" onchange="setExpense('${k}','other',this.value)"></div>
+  <div class="field"><label>稼働時間</label><input type="number" min="0" step="0.1" inputmode="decimal" value="${v.hours||''}" onchange="setExpense('${k}','hours',this.value)"></div>
+  <div class="field wide"><label>メモ</label><input value="${esc(v.note||'')}" onchange="setExpense('${k}','note',this.value)"></div></div></div>`;
+ }).join('');
+}
+function backToDaily(){
+ const date=salesDate;
+ year=+date.slice(0,4);month=+date.slice(5,7);
+ render('month');
+ requestAnimationFrame(()=>{const target=document.getElementById('day-card-'+date);if(target)target.scrollIntoView({block:'start',behavior:'auto'})});
+}
+function setExpense(k,f,v){if(!db.expenses[k])db.expenses[k]={};db.expenses[k][f]=f==='note'?v:num(v);queueSave()}
+function renderBackup(){$('app').innerHTML=`<section class="card"><h2>バックアップ・復元</h2><p class="muted">JSONは案件・業者プリセット・経費・年度情報を含む完全バックアップです。CSVは案件別売上と日別経費を出力します。</p><div class="row"><button class="primary" onclick="exportJSON()">JSONを書き出す</button><button onclick="exportCSV()">CSVを書き出す</button></div><div style="margin-top:15px"><label>JSONバックアップを復元</label><input id="restoreFile" type="file" accept="application/json,.json"></div><p class="notice" style="margin-top:12px">復元すると現在の端末内データをバックアップ内容で置き換えます。先に現在のJSONを書き出してください。現バージョンは端末内保存であり、家族間クラウド同期はまだ接続されていません。</p></section>`;$('restoreFile').onchange=restoreJSON}
+function download(name,blob){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function exportJSON(){download(`配達収支台帳_${new Date().toISOString().slice(0,10)}.json`,new Blob([JSON.stringify(db,null,2)],{type:'application/json'}))}
+function exportCSV(){let rows=[['区分','日付','売上先','売上金額','ガソリン代','駐車場代','その他経費','稼働時間','メモ']];db.entries.forEach(e=>{const x=db.expenses[e.date]||{};rows.push(['案件売上',e.date,e.partnerName,e.amount,'','','','','']);});Object.entries(db.expenses).forEach(([date,x])=>rows.push(['日別経費',date,'','',''+num(x.gasoline),num(x.parking),num(x.other),num(x.hours),x.note||'']));const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');download(`配達収支台帳_${year}年.csv`,new Blob([csv],{type:'text/csv;charset=utf-8'}))}
+function restoreJSON(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(x.version!==3||!Array.isArray(x.entries)||!Array.isArray(x.partners)||!x.expenses)throw Error();if(!confirm('現在の端末内データをこのバックアップで置き換えますか？'))return;db=x;year=allYears().includes(new Date().getFullYear())?new Date().getFullYear():allYears()[0];syncYears();save();render('stats');alert('復元しました')}catch(err){alert('対応していないJSON、または破損したファイルです')}};r.readAsText(f);e.target.value=''}
+function render(v){view=v;syncYears();if(v==='stats')renderStats();else if(v==='sales')renderSales();else if(v==='partners')renderPartners();else if(v==='backup')renderBackup();else if(v==='month')renderMonthDetail();window.scrollTo({top:0,left:0,behavior:'instant'})}
+$('yearSelect').addEventListener('change',e=>{year=+e.target.value;render(view)});
+$('addYear').addEventListener('click',addYear);
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>render(b.dataset.view)));
+db=load();year=allYears().includes(new Date().getFullYear())?new Date().getFullYear():Math.max(...allYears());syncYears();save();render('stats');
+</script>
+</body></html>
